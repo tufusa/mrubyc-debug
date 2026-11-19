@@ -20,7 +20,7 @@ static int parse_integer(char *integer, int len) {
     int digit = integer[i] - '0';
     if(digit < 0 || 10 < digit) return -1;
 
-    res = digit * base;
+    res += digit * base;
     base *= 10;
   }
   return res;
