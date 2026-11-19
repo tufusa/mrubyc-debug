@@ -15,9 +15,10 @@ static debug_resume_type handle_input(mrbc_vm* vm) {
   debug_resume_type resume_type = RESUME_TYPE_STAY;
 
   while (resume_type == RESUME_TYPE_STAY) {
+    mrbc_print("(mrcdbg) ");
+
     int len = read_line(buf, max_len);
 
-    mrbc_printf("%d ", len);
     mrbc_nprint(buf, len);
     mrbc_print("\n");
 
