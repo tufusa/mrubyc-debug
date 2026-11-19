@@ -7,9 +7,13 @@
 #include "common.h"
 #include "command.h"
 
-#define BUFFER_LEN 256
+typedef struct {
+  const char *name;
+  int len;
+  debug_resume_type (*handler)(mrbc_vm *vm, char *args, int len);
+} command_entry;
 
-static char buf[BUFFER_LEN] = {0};
+#define COMMAND_ENTRY(name, handler) (command_entry){ name, sizeof(name)-1, handler }
 
 static int parse_integer(char *integer, int len) {
   if(len == 0) return -1;
@@ -59,13 +63,6 @@ static bool command_break(mrbc_vm *vm, char *args, int len) {
     return true;
   }
 
-  if(*args == ' ') {
-    args++;
-    len--;
-  } else {
-    return false;
-  }
-
   int filename_len = -1;
   for(int idx = 0; idx < len; idx++) {
     if(args[idx] == ':') {
@@ -99,13 +96,6 @@ static bool command_break(mrbc_vm *vm, char *args, int len) {
 static bool command_delete(mrbc_vm *vm, char *args, int len) {
   if(len == 0) {
     return delete_all_breakpoints();
-  }
-
-  if(*args == ' ') {
-    args++;
-    len--;
-  } else {
-    return false;
   }
 
   int id = parse_integer(args, len);
@@ -156,63 +146,47 @@ static bool command_backtrace(mrbc_vm *vm, char *args, int len) {
   return true;
 }
 
+static debug_resume_type handle_command_continue(mrbc_vm *vm, char *args, int len) { return RESUME_TYPE_CONTINUE; }
+static debug_resume_type handle_command_step(mrbc_vm *vm, char *args, int len) { return RESUME_TYPE_STEP; }
+static debug_resume_type handle_command_next(mrbc_vm *vm, char *args, int len) { return RESUME_TYPE_STEP; }
+static debug_resume_type handle_command_finish(mrbc_vm *vm, char *args, int len) { return RESUME_TYPE_STEP; }
+static debug_resume_type handle_command_break(mrbc_vm *vm, char *args, int len) { command_break(vm, args, len); return RESUME_TYPE_STAY; }
+static debug_resume_type handle_command_delete(mrbc_vm *vm, char *args, int len) { command_delete(vm, args, len); return RESUME_TYPE_STAY; }
+static debug_resume_type handle_command_info(mrbc_vm *vm, char *args, int len) { command_info(vm, args, len); return RESUME_TYPE_STAY; }
+static debug_resume_type handle_command_backtrace(mrbc_vm *vm, char *args, int len) { command_backtrace(vm, args, len); return RESUME_TYPE_STAY; }
+
+static const command_entry commands[] = {
+  COMMAND_ENTRY("continue", handle_command_continue),
+  COMMAND_ENTRY("c", handle_command_continue),
+  COMMAND_ENTRY("step", handle_command_step),
+  COMMAND_ENTRY("s", handle_command_step),
+  COMMAND_ENTRY("next", handle_command_next),
+  COMMAND_ENTRY("n", handle_command_next),
+  COMMAND_ENTRY("finish", handle_command_finish),
+  COMMAND_ENTRY("fin", handle_command_finish),
+  COMMAND_ENTRY("break", handle_command_break),
+  COMMAND_ENTRY("b", handle_command_break),
+  COMMAND_ENTRY("delete", handle_command_delete),
+  COMMAND_ENTRY("d", handle_command_delete),
+  COMMAND_ENTRY("info", handle_command_info),
+  COMMAND_ENTRY("i", handle_command_info),
+  COMMAND_ENTRY("backtrace", handle_command_backtrace),
+  COMMAND_ENTRY("bt", handle_command_backtrace),
+};
+
 debug_resume_type handle_command(mrbc_vm *vm, char *command, int len) {
-  if(len == 8 && strncmp(command, "continue", 8) == 0) {
-    return RESUME_TYPE_CONTINUE;
-  }
-  else if(len == 1 && strncmp(command, "c", 1) == 0) {
-    return RESUME_TYPE_CONTINUE;
-  }
-  else if(len == 4 && strncmp(command, "step", 4) == 0) {
-    return RESUME_TYPE_STEP;
-  }
-  else if(len == 1 && strncmp(command, "s", 1) == 0) {
-    return RESUME_TYPE_STEP;
-  }
-  else if(len == 4 && strncmp(command, "next", 4) == 0) {
-    // TODO: `next`
-    return RESUME_TYPE_STEP;
-  }
-  else if(len == 1 && strncmp(command, "n", 1) == 0) {
-    // TODO: `next`
-    return RESUME_TYPE_STEP;
-  }
-  else if(len == 6 && strncmp(command, "finish", 6) == 0) {
-    // TODO: `finish`
-    return RESUME_TYPE_STEP;
-  }
-  else if(len == 3 && strncmp(command, "fin", 3) == 0) {
-    // TODO: `finish`
-    return RESUME_TYPE_STEP;
-  }
-  else if(len >= 5 && strncmp(command, "break", 5) == 0) {
-    command_break(vm, command + 5, len - 5);
-    return RESUME_TYPE_STAY;
-  }
-  else if(len >= 1 && strncmp(command, "b", 1) == 0) {
-    // FIXME: backtraceをキャッチしてしまう, 前方一致はやめたほうがよさそうか
-    command_break(vm, command + 1, len - 1);
-    return RESUME_TYPE_STAY;
-  }
-  else if(len >= 6 && strncmp(command, "delete", 6) == 0) {
-    command_delete(vm, command + 6, len - 6);
-    return RESUME_TYPE_STAY;
-  }
-  else if(len >= 1 && strncmp(command, "d", 1) == 0) {
-    command_delete(vm, command + 1, len - 1);
-    return RESUME_TYPE_STAY;
-  }
-  else if(len == 4 && strncmp(command, "info", 4) == 0) {
-    command_info(vm, command + 4, len - 4);
-    return RESUME_TYPE_STAY;
-  }
-  else if(len == 9 && strncmp(command, "backtrace", 9) == 0) {
-    command_backtrace(vm, command + 9, len - 9);
-    return RESUME_TYPE_STAY;
-  }
-  else if(len == 2 && strncmp(command, "bt", 2) == 0) {
-    command_backtrace(vm, command + 2, len - 2);
-    return RESUME_TYPE_STAY;
+  int command_len = 0;
+  while(command_len < len && command[command_len] != ' ') command_len++; // 最初の空白までがコマンド
+
+  int args_len = len - command_len;
+  while(args_len > 0 && command[len - args_len] == ' ') args_len--; // 先頭の空白を無視
+
+  char* args = command + (len - args_len);
+
+  for(int i = 0; i < sizeof(commands) / sizeof(command_entry); i++) {
+    if(command_len == commands[i].len && strncmp(command, commands[i].name, commands[i].len) == 0 && commands[i].handler) {
+      return commands[i].handler(vm, args, args_len);
+    }
   }
 
   return RESUME_TYPE_STAY;
