@@ -18,10 +18,6 @@ static debug_resume_type handle_input(mrbc_vm* vm) {
     mrbc_print("(mrcdbg) ");
 
     int len = read_line(buf, max_len);
-
-    mrbc_nprint(buf, len);
-    mrbc_print("\n");
-
     resume_type = handle_command(vm, buf, len);
   }
   return resume_type;
